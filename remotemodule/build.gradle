@@ -1,3 +1,5 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
 plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
@@ -48,6 +50,33 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
 }
 
+def getStringFromSecureStorage(String account, String service) {
+    if (Os.isFamily(Os.FAMILY_MAC)) {
+        def stdout = new ByteArrayOutputStream()
+        def stderr = new ByteArrayOutputStream()
+        def executable = 'security'
+        def arguments = ['-q', 'find-generic-password', '-a', account, '-s', service, '-w']
+        exec {
+            commandLine executable
+            args arguments
+            standardOutput = stdout
+            errorOutput = stderr
+            ignoreExitValue true
+        }
+        //noinspection GroovyAssignabilityCheck
+        return stdout.toString().trim()
+    } else {
+        return null
+    }
+}
+
+private Properties getKeystoreProperties() {
+    def keystorePropertiesFile = new File(gradle.gradleUserHomeDir, "dice_keystore.properties")
+    def keystoreProperties = new Properties()
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    keystoreProperties
+}
+
 afterEvaluate {
     publishing {
         repositories {
@@ -55,8 +84,11 @@ afterEvaluate {
                 name = "GitHubPackages"
                 url = uri("https://maven.pkg.github.com/alasdairhall/module")
                 credentials {
-                    username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
-                    password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
+                    def keystoreProperties = getKeystoreProperties()
+                    def user = keystoreProperties.getProperty("gpr.user")
+                    def service = keystoreProperties.getProperty("gpr.service")
+                    username = user ?: System.getenv("PACKAGES_ACCESS_USER")
+                    password = getStringFromSecureStorage(user, service) ?: System.getenv("PACKAGES_ACCESS_TOKEN")
                 }
             }
         }
